@@ -35,13 +35,13 @@ func main() {
 	// if len(os.Args) == 1 {
 	// 	fmt.Println("command not given.");
 	// }
-	fmt.Println(os.Args[1:])
+	fmt.Println(os.Args[1])
 	// take inputs from cmd
 	//fmt.Println(len(os.Args), os.Args[1])
 	//ends
 	// process spawn 
 	//cmd := exec.Command(os.Args[1])
-	cmd := exec.Command("/usr/bin/curl", "sh", os.Args[1:])
+	cmd := exec.Command("sh", "-c", os.Args[1])
     cmd.Stdout = os.Stdout
     err := cmd.Start()
     if err != nil {
