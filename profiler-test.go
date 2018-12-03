@@ -9,7 +9,7 @@ import (
 	//"code/go/test-project/profiler"
 	"bufio"
 	"bytes"
-    "strconv"
+    //"strconv"
     "strings"
     //"sync"
 )
@@ -28,34 +28,24 @@ type CPU struct {
 
 var pid int
 
+var hertz float64
+
 func main() {
+
 	defer TimeTrack(time.Now(), "profiler")
-	
-	// fmt.Println(os.Args[1])
-	// take inputs from cmd
-	
     go exe_cmd(os.Args[1])
-
-	// cmd := exec.Command("sh", "-c", os.Args[1])
- //    cmd.Stdout = os.Stdout
- //    err := cmd.Start()
- //    if err != nil {
- //       log.Fatal(err)
- //    }
- //    log.Printf("Just ran subprocess %d, exiting\n", cmd.Process.Pid)
-	// //ends
-	
-	// pid := cmd.Process.Pid
-
-    //pid = 6548
 	Resources := []Memory{}
     Processes := []CPU{}
-
-	for i := 0; i < 5; i++ {
+    hertz = 1000
+	for i := 0; i < 3; i++ {
+        fmt.Println("-----------------------------------------------------------------------------");
 		rs := Memory{}
         pr := CPU{}
-		go CalculateMemory(pid, rs, &Resources)
-        go CPUUsage(pid, pr, &Processes)
+        go CalculateMemory(pid, rs, &Resources)
+        go CalculateCPU(pid, pr, &Processes)
+		// go CalculateMemory(12939, rs, &Resources)
+        // go CalculateCPU(12939, pr, &Processes)
+        // go CPUUsage(pid, pr, &Processes)
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -64,29 +54,97 @@ func main() {
 	fmt.Printf("Program finished\n")
 }
 
-// func main() {
-//     defer TimeTrack(time.Now(), "profiler")
-//     fmt.Println(os.Args[1])
-//     // take inputs from cmd
-//     command_test(os.Args[1]);
-//     fmt.Printf("Program finished\n")
-// }
+//https://unix.stackexchange.com/questions/58539/top-and-ps-not-showing-the-same-cpu-result
+func CalculateCPU(opid int, pr CPU, prArr *[]CPU) {
+    f, err := os.Open(fmt.Sprintf("/proc/%d/stat", opid))
+    if err != nil {
+        //return 0, err
+    }
+    defer f.Close()
 
+    //hertz := getCPUHZ()
 
-// func command_test(cmd string) {
-//     done := make(chan bool, 1)
-//     go exe_cmd(cmd, done)
-//     Resources := []Resource{}
-//     for {
-//         if <-done {
-//             fmt.Println("Channel ends");
-//             break
-//         }
-//         rs := Resource{}
-//         fmt.Println("pid", pid)
-//         go CalculateMemory(pid, rs, &Resources)
-//         time.Sleep(100 * time.Millisecond)    
+    go getCPUHZ()
+
+    fmt.Printf("Hertz: %f\n", hertz)
+    utime := float64(0)
+    stime := float64(0)
+    cuttime := float64(0)
+    cstime := float64(0)
+    starttime := float64(0)
+    var proctimes []string
+    //var seconds float64
+
+    r := bufio.NewScanner(f)
+    for r.Scan() {
+        line := r.Text()
+        proctimes = strings.Split(line, " ")
+        fmt.Sscanf(proctimes[13], "%f", &utime)
+        fmt.Sscanf(proctimes[14], "%f", &stime)
+        fmt.Sscanf(proctimes[15], "%f", &cuttime)
+        fmt.Sscanf(proctimes[15], "%f", &cstime)
+        fmt.Sscanf(proctimes[21], "%f", &starttime)
+
+        // fmt.Printf("utime: %f\n", utime)
+        // fmt.Printf("stime: %f\n", stime)
+        // fmt.Printf("cuttime: %f\n", cuttime)
+        // fmt.Printf("cstime: %f\n", cstime)
+        // fmt.Printf("starttime: %f\n", starttime)
+
+        total_time := utime + stime + cuttime + cstime
+        fmt.Printf("total cpu clocks: %f\n", total_time)
+        fmt.Printf("total cpu usage in hertz: %f\n", total_time/hertz)
+
+        t := time.Now()
+        pr.dateTime = t.Format(time.RFC3339)
+        pr.pid = opid
+        pr.cpu = total_time/hertz
+        *prArr = append(*prArr,pr)
+
+        //percentage calcualtioc
+        //seconds = uptime - starttime/hertz  // get uptime from tail -f /proc/uptime
+        //fmt.Printf("seconds: %f\n", seconds)
+        // if seconds > 0 {
+        //     total_time := utime + stime + cuttime + cstime
+        //     fmt.Printf("total_time: %f\n", total_time)
+        //     pcpu := ( total_time * 1000 / hertz) / seconds
+        //     fmt.Printf("pcpu: %f\n", pcpu)
+        // }
+    }
+    if err := r.Err(); err != nil {
+        //return 0, err
+    }
+}
+
+func getCPUHZ() {
+    line := float64(0)
+    out, err := exec.Command("sh", "-c", "lscpu | grep -m1 MHz").Output()
+    if err != nil {
+        log.Fatal(err)
+        //return line
+    }
+    _, err1 := fmt.Sscanf(string(out[8:]), "%f", &line)
+    if err1 != nil {
+        log.Fatal(err1)
+    }
+    hertz = line*1000
+    //fmt.Printf("MHz %f\n", line)
+    //return line*1000
+}
+
+// func getCPUHZ() float64 {
+//     line := float64(0)
+//     out, err := exec.Command("sh", "-c", "lscpu | grep -m1 MHz").Output()
+//     if err != nil {
+//         log.Fatal(err)
+//         return line
 //     }
+//     _, err1 := fmt.Sscanf(string(out[8:]), "%f", &line)
+//     if err1 != nil {
+//         log.Fatal(err1)
+//     }
+//     //fmt.Printf("MHz %f\n", line)
+//     return line*1000
 // }
 
 func exe_cmd(cmd string) {
@@ -99,7 +157,6 @@ func exe_cmd(cmd string) {
         fmt.Println("error occured")
         fmt.Printf("%s", err)
     }
-    fmt.Printf("%s", err)
 }
 
 // func exe_cmd(cmd string, done chan bool) {
@@ -145,83 +202,52 @@ func CalculateMemory(pid int, rs Memory, resAr *[]Memory) {
     rs.memoryUsed = res
     rs.dateTime = t.Format(time.RFC3339)
     rs.pid = pid
-   	// rs.dateTime = time.Now().Format("Y-m-d H:i:s")
     *resAr = append(*resAr,rs)
     //return res, nil
 }
-
-func CPUUsage(opid int, pr CPU, prArr *[]CPU) {
-    cmd := exec.Command("ps", "aux")
-    var out bytes.Buffer
-    cmd.Stdout = &out
-    err := cmd.Run()
-    if err != nil {
-        log.Fatal(err)
-    }
-    for {
-        line, err := out.ReadString('\n')
-        if err!=nil {
-            break;
-        }
-        tokens := strings.Split(line, " ")
-        ft := make([]string, 0)
-        for _, t := range(tokens) {
-            if t!="" && t!="\t" {
-                ft = append(ft, t)
-            }
-        }
-        pid, err := strconv.Atoi(ft[1])
-        if err!=nil {
-            continue
-        }
-        cpu, err := strconv.ParseFloat(ft[2], 64)
-        if err!=nil {
-            log.Fatal(err)
-        }
-        if pid == opid {
-            t := time.Now()
-            pr.dateTime = t.Format(time.RFC3339)
-            pr.pid = pid
-            pr.cpu = cpu
-            *prArr = append(*prArr,pr)
-        }
-    }
-}
-
-// func CalculateCPU(pid int, rs Resource, resAr *[]Resource) {
-//     f, err := os.Open(fmt.Sprintf("/proc/%d/smaps", pid))
-//     if err != nil {
-//         //return 0, err
-//     }
-//     defer f.Close()
-
-//     res := uint64(0)
-//     pfx := []byte("Pss:")
-//     r := bufio.NewScanner(f)
-//     for r.Scan() {
-//         line := r.Bytes()
-//         if bytes.HasPrefix(line, pfx) {
-//             var size uint64
-//             _, err := fmt.Sscanf(string(line[4:]), "%d", &size)
-//             if err != nil {
-//                 //return 0, err
-//             }
-//             res += size
-//         }
-//     }
-//     if err := r.Err(); err != nil {
-//         //return 0, err
-//     }
-//     rs.memoryUsed = res
-//     rs.dateTime = time.Now().Format("Y-m-d H:i:s")
-//     *resAr = append(*resAr,rs)
-//     //return res, nil
-// }
 
 func TimeTrack(start time.Time, name string) {
     elapsed := time.Since(start)
     fmt.Printf("%s took %s\n", name, elapsed)
 }
+
+// func CPUUsage(opid int, pr CPU, prArr *[]CPU) {
+//     cmd := exec.Command("ps", "aux")
+//     var out bytes.Buffer
+//     cmd.Stdout = &out
+//     err := cmd.Run()
+//     if err != nil {
+//         log.Fatal(err)
+//     }
+//     for {
+//         line, err := out.ReadString('\n')
+//         if err!=nil {
+//             break;
+//         }
+//         tokens := strings.Split(line, " ")
+//         ft := make([]string, 0)
+//         for _, t := range(tokens) {
+//             if t!="" && t!="\t" {
+//                 ft = append(ft, t)
+//             }
+//         }
+//         pid, err := strconv.Atoi(ft[1])
+//         if err!=nil {
+//             continue
+//         }
+//         cpu, err := strconv.ParseFloat(ft[2], 64)
+//         if err!=nil {
+//             log.Fatal(err)
+//         }
+//         if pid == opid {
+//             t := time.Now()
+//             pr.dateTime = t.Format(time.RFC3339)
+//             pr.pid = pid
+//             pr.cpu = cpu
+//             *prArr = append(*prArr,pr)
+//         }
+//     }
+// }
 
 //https://stackoverflow.com/questions/20437336/how-to-execute-system-command-in-golang-with-unknown-arguments
 
